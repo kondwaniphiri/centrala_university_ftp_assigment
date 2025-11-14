@@ -1,0 +1,15 @@
+body { background: #f5f7fb; }
+#list { max-height: 420px; overflow: auto; }
+
+.action-panel-scroll { max-height: 70vh; overflow-y: auto; }
+
+#files-table tbody tr.invalid-row td { background: #fff3cd; }
+
+/* Smaller font for results */
+.results-small { font-size: 0.75rem; line-height: 1.1; font-family: Consolas, Menlo, monospace; }
+
+/* Activity bar subtle animation via JS adding dots */
+#activity-bar { transition: opacity .25s ease; }
+.activity-info { background:#e7f3ff; border-color:#b6ddff; }
+.activity-error { background:#fdecea; border-color:#f5c2c0; }
+.activity-success { background:#e6f7ed; border-color:#b9e7cc; }
