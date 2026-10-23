@@ -5,16 +5,35 @@ import json
 import re
 import datetime as dt
 from ftplib import FTP, error_perm
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, g
 from flask_cors import CORS
 import subprocess
 import urllib.request
+import tempfile
+import threading
+import time
 from pathlib import Path
 
-from validate_csv import validate_file  # local validation logic
+from validate_csv import validate_file, FILENAME_RE  # local validation logic
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=['null', 'http://127.0.0.1:5000', 'http://localhost:5000'])
+STATE_LOCK = threading.RLock()
+
+
+@app.before_request
+def serialize_ftp_and_state():
+    # FTP control channels and file-backed logs cannot safely be shared by
+    # concurrent requests. Serialize demo operations, including state resets.
+    STATE_LOCK.acquire()
+    g.state_locked = True
+
+
+@app.teardown_request
+def release_state_lock(error=None):
+    if getattr(g, 'state_locked', False):
+        g.state_locked = False
+        STATE_LOCK.release()
 
 # --- Paths / Storage Setup -------------------------------------------------
 BASE_DOWNLOAD_DIR = Path(__file__).resolve().parent / 'downloads'
@@ -100,12 +119,21 @@ def monthly_dir(now: dt.datetime | None = None) -> Path:
 # --- Session Management -----------------------------------------------------
 # In-memory token -> ftplib.FTP connection map. Intended only for demo use.
 SESSIONS = {}
+SESSION_ACTIVITY = {}
+SESSION_IDLE_SECONDS = 15 * 60
 
 
 def get_conn(token: str):
     conn = SESSIONS.get(token)
     if conn is None:
         return None, ("invalid_session", 401)
+    now = time.monotonic()
+    if now - SESSION_ACTIVITY.get(token, now) > SESSION_IDLE_SECONDS:
+        conn.close()
+        SESSIONS.pop(token, None)
+        SESSION_ACTIVITY.pop(token, None)
+        return None, ('session_expired', 401)
+    SESSION_ACTIVITY[token] = now
     return conn, None
 
 
@@ -113,10 +141,15 @@ def get_conn(token: str):
 def connect():
     data = request.get_json(force=True)
     host = data.get('host')
-    port = int(data.get('port', 21))
+    try:
+        port = int(data.get('port', 21))
+        timeout = int(data.get('timeout', 10))
+        if not isinstance(host, str) or not host.strip() or not 1 <= port <= 65535 or not 1 <= timeout <= 60:
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({'error': 'invalid_connection_settings'}), 400
     user = data.get('user', '')
     password = data.get('password', '')
-    timeout = int(data.get('timeout', 10))
     diagnostics = {}
     try:
         ftp = FTP()
@@ -139,8 +172,10 @@ def connect():
             pwd = ''
         token = str(uuid.uuid4())
         SESSIONS[token] = ftp
+        SESSION_ACTIVITY[token] = time.monotonic()
         return jsonify({"token": token, "pwd": pwd, "diagnostics": diagnostics}), 200
     except Exception as e:
+        ftp.close()
         diagnostics['exception'] = str(e)
         return jsonify({"error": "connection_failed", "details": diagnostics}), 400
 
@@ -175,6 +210,8 @@ def ftp_probe():
     except Exception as e:
         diagnostics['exception'] = str(e)
         return jsonify({'ok': False, 'diagnostics': diagnostics}), 400
+    finally:
+        ftp.close()
 
 
 @app.post('/api/debug-connect')
@@ -214,6 +251,8 @@ def debug_connect():
             'trace': log_buf.getvalue(),
             'error': str(e)
         }), 400
+    finally:
+        ftp.close()
 
 
 @app.post('/api/disconnect')
@@ -232,6 +271,7 @@ def disconnect():
             pass
     finally:
         SESSIONS.pop(token, None)
+        SESSION_ACTIVITY.pop(token, None)
     return jsonify({"ok": True})
 
 
@@ -401,6 +441,8 @@ def bulk_download():
     data = request.get_json(force=True)
     token = data.get('token')
     files = data.get('files', [])
+    if not isinstance(files, list) or not all(isinstance(n, str) for n in files):
+        return jsonify({'error': 'files_must_be_a_list_of_strings'}), 400
     skip_downloaded = bool(data.get('skipDownloaded', True))
     conn, err = get_conn(token)
     if err:
@@ -408,6 +450,18 @@ def bulk_download():
     results = []
     previously_invalid = load_invalid_filenames()
     for name in files:
+        # Check before FTP access or any local write/delete operation.
+        if not isinstance(name, str) or not FILENAME_RE.fullmatch(name):
+            # Ordinary CSV names that violate the convention still need an
+            # audit entry. Never download or use them as local paths.
+            if isinstance(name, str) and re.fullmatch(r'[A-Za-z0-9_-]+\.csv', name, re.IGNORECASE):
+                issues = ['incorrect_filename_format']
+                guid = log_validation_error(name, issues)
+                results.append({'name': name, 'valid': False, 'issues': issues,
+                                'rows': 0, 'error_guid': guid})
+            else:
+                results.append({'name': name, 'error': 'invalid_filename'})
+            continue
         if name in previously_invalid:
             results.append({'name': name, 'skipped': True, 'reason': 'previously_invalid'})
             continue
@@ -418,20 +472,16 @@ def bulk_download():
                 'reason': 'already_downloaded'
             })
             continue
+        staging = None
         try:
             raw = _download_raw(conn, name)
             # IMPORTANT: Write using the ORIGINAL filename so validator's filename pattern check passes.
             # Previously we used a prefixed temp name which caused every file to fail pattern validation.
             target_dir = monthly_dir()
-            temp_path = target_dir / name
-            # If a stale partial file exists (crash in prior run), remove it before writing.
-            if temp_path.exists():
-                try:
-                    temp_path.unlink()
-                except Exception:
-                    pass
-            with temp_path.open('wb') as f:
-                f.write(raw)
+            # Validate in an isolated staging directory, preserving the filename.
+            staging = tempfile.TemporaryDirectory(dir=target_dir)
+            temp_path = Path(staging.name) / name
+            temp_path.write_bytes(raw)
             vres = validate_file(temp_path)
             entry = {
                 'name': name,
@@ -440,8 +490,10 @@ def bulk_download():
                 'rows': vres.rows,
             }
             if vres.is_valid:
-                final_path = temp_path  # already correct location/name
-                append_tracking(name)
+                final_path = target_dir / name
+                if final_path.is_symlink():
+                    raise ValueError('unsafe_download_target')
+                temp_path.replace(final_path)
                 # Copy to web client downloads mirror
                 try:
                     web_month = WEB_CLIENT_DOWNLOAD_BASE / final_path.parent.name
@@ -460,6 +512,7 @@ def bulk_download():
                     'stored_path': entry['stored_path'],
                     'rows': vres.rows
                 })
+                append_tracking(name)
             else:
                 guid = log_validation_error(name, vres.issues)
                 entry['error_guid'] = guid
@@ -473,6 +526,9 @@ def bulk_download():
             results.append({'name': name, 'error': str(e)})
         except Exception as e:
             results.append({'name': name, 'error': str(e)})
+        finally:
+            if staging is not None:
+                staging.cleanup()
     return jsonify({'results': results}), 200
 
 
@@ -505,6 +561,9 @@ def reset_state():
     JSON body: { purgeDownloads: bool }
     """
     data = request.get_json(force=True, silent=True) or {}
+    conn, err = get_conn(data.get('token'))
+    if err:
+        return jsonify({'error': err[0]}), err[1]
     purge = bool(data.get('purgeDownloads', False))
     removed = []
     errors = []
@@ -555,4 +614,4 @@ def reset_state():
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='127.0.0.1', port=port, debug=False)

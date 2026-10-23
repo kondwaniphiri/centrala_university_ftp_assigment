@@ -131,7 +131,7 @@ def corrupt_filename(base_name: str) -> str:
         base_name.replace("MED_DATA_", "MEDDATA_"),
         base_name.replace(".csv", ".CSV"),
         base_name.lower(),
-        base_name.replace("2025", "23"),
+        base_name.replace("MED_DATA_", "MED_DATA_X"),
         base_name.replace("MED_DATA_", "MED-DATA-"),
     ]
     return random.choice(variants)
@@ -142,7 +142,9 @@ def inject_duplicate_batch(rows: List[List[Any]]) -> List[str]:
         return ["duplicate_batch_id_failed_empty"]
     # Duplicate first row's batch id into another row
     dup_id = rows[0][0]
-    target_index = random.randrange(len(rows))
+    if len(rows) < 2:
+        rows.append(rows[0].copy())
+    target_index = random.randrange(1, len(rows))
     rows[target_index][0] = dup_id
     return ["duplicate_batch_id"]
 
@@ -204,7 +206,7 @@ def write_csv(path: Path, headers: List[str], rows: Iterable[List[Any]]):
 
 
 def create_empty_file(path: Path):
-    path.touch()
+    path.write_bytes(b'')
 
 
 def generate_files(out_dir: Path, total: int, valid_ratio: float, seed: Optional[int]=None, resume: bool=True) -> Dict[str, Any]:
@@ -223,7 +225,11 @@ def generate_files(out_dir: Path, total: int, valid_ratio: float, seed: Optional
     if seed is not None:
         random.seed(seed)
 
-    # out_dir.mkdir(parents=True, exist_ok=True)
+    if total < 0 or not 0 <= valid_ratio <= 1:
+        raise ValueError('total must be nonnegative and valid_ratio must be between 0 and 1')
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if not resume and any(out_dir.glob('*.csv')):
+        raise ValueError('--no-resume requires an output directory without CSV files')
     descriptors: List[FileDescriptor] = []
 
     target_valid = int(total * valid_ratio)
@@ -337,7 +343,7 @@ def parse_args():
     # Default output now targets FTP server root so files are immediately listable by the FTP server
     default_out = Path(__file__).resolve().parent / 'ftp-roots' / 'default'
     p.add_argument("--out", type=Path, default=default_out, help="Output directory for CSV files (default: ftp-roots/default)")
-    p.add_argument("--total", type=int, default=50, help="Total files to generate")
+    p.add_argument("--total", "--count", type=int, default=50, help="Total files to generate")
     # Increase default valid ratio so majority of generated files are valid
     p.add_argument("--valid-ratio", type=float, default=0.7, help="Ratio of valid files (0-1)")
     p.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")

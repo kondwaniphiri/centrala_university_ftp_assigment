@@ -1,0 +1,14 @@
+.tools/
+__pycache__/
+.pytest_cache/
+node_modules/
+tmp/
+*.py[cod]
+*.pid
+.venv/
+venv/
+dist/
+generation_logs/
+interface/ftp_client_backend/downloads/
+interface/ftp_client_backend/logs/
+interface/web_client/downloads/

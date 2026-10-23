@@ -7,7 +7,7 @@ const { FtpSrv } = require('ftp-srv');
 const path = require('path');
 const fs = require('fs');
 
-const HOST = '0.0.0.0';
+const HOST = '127.0.0.1';
 const PORT = 2121;
 const DATA_PORT_MIN = 2000;
 const DATA_PORT_MAX = 2100;

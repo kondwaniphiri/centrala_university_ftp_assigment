@@ -1,0 +1,68 @@
+FTP Web Client
+127.0.0.1
+2121
+user
+••••
+ConnectDisconnect
+Connected (pwd: \)
+CSV Files
+Refresh
+PWD
+\
+￼
+Name
+Pattern
+Downloaded
+￼
+med_data_20240603140207.csv
+No
+No
+<Page 1/1>
+1 files
+New files not yet downloaded: (n/a)
+Bulk Download Actions
+Select CSV files in the table then use the buttons below.
+Download
+Check New Files
+Select All Files
+Clear Selection
+￼
+Bulk Download Results
+1. MED_DATA_20240603140147.csv downloaded successfully (9 rows).
+2. MED_DATA_20240603140148.csv downloaded successfully (11 rows).
+3. MED_DATA_20240603140149.csv downloaded successfully (10 rows).
+4. MED_DATA_20240603140150.csv downloaded successfully (9 rows).
+5. MED_DATA_20240603140151.csv invalid (duplicate_batch_id).
+6. MED_DATA_20240603140152.csv invalid (malformed_csv).
+7. MED_DATA_20240603140153.csv invalid (empty_file).
+8. MED_DATA_20240603140154.csv downloaded successfully (8 rows).
+9. MED_DATA_20240603140155.csv invalid (duplicate_batch_id).
+10. MED_DATA_20240603140156.csv downloaded successfully (8 rows).
+11. MED_DATA_20240603140157.csv downloaded successfully (11 rows).
+12. MED_DATA_20240603140158.csv downloaded successfully (10 rows).
+13. MED_DATA_20240603140159.csv invalid (missing_columns_in_row).
+14. MED_DATA_20240603140200.csv downloaded successfully (9 rows).
+15. MED_DATA_20240603140201.csv downloaded successfully (9 rows).
+16. MED_DATA_20240603140202.csv downloaded successfully (8 rows).
+17. MED_DATA_20240603140203.csv invalid (duplicate_batch_id).
+18. MED_DATA_20240603140204.csv invalid (invalid_or_missing_headers).
+19. MED_DATA_20240603140205.csv invalid (empty_file).
+20. MED_DATA_20240603140206.csv invalid (malformed_csv).
+21. med_data_20240603140207.csv error: invalid_filename
+22. MED_DATA_20240603140208.csv downloaded successfully (10 rows).
+23. MED_DATA_20240603140209.csv downloaded successfully (8 rows).
+24. MED_DATA_20240603140210.csv downloaded successfully (11 rows).
+25. MED_DATA_20240603140211.csv invalid (malformed_csv).
+26. MED_DATA_20240603140212.csv downloaded successfully (9 rows).
+27. MED_DATA_20240603140213.csv invalid (malformed_csv).
+28. MED_DATA_20240603140214.csv downloaded successfully (8 rows).
+29. MED_DATA_20240603140215.csv downloaded successfully (10 rows).
+30. MED_DATA_20240603140216.csv downloaded successfully (9 rows).
+31. MED_DATA_20240603140217.csv downloaded successfully (10 rows).
+32. MED_DATA_20240603140218.csv downloaded successfully (10 rows).
+33. MED_DATA_20240603140219.csv downloaded successfully (8 rows).
+34. MED_DATA_20240603140220.csv downloaded successfully (11 rows).
+35. MED_DATA_20240603140221.csv downloaded successfully (12 rows).
+36. MED_DATA_20240603140222.csv downloaded successfully (10 rows).
+37. MED_DATA_20240603140223.csv downloaded successfully (8 rows).
+Valid: 25 | Invalid: 11 | Skipped: 0 | Errors: 1

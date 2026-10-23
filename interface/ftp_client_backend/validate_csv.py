@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 import csv
 import json
+from datetime import datetime
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import List, Tuple
@@ -49,6 +50,11 @@ def validate_file(path: Path) -> ValidationResult:
     # 1. Filename pattern
     if not FILENAME_RE.match(path.name):
         issues.append("incorrect_filename_format")
+    else:
+        try:
+            datetime.strptime(path.name[9:-4], '%Y%m%d%H%M%S')
+        except ValueError:
+            issues.append("invalid_filename_timestamp")
 
     if not path.exists():
         issues.append("file_missing")
@@ -60,7 +66,7 @@ def validate_file(path: Path) -> ValidationResult:
 
     try:
         with path.open('r', encoding='utf-8', newline='') as f:
-            reader = csv.reader(f)
+            reader = csv.reader(f, strict=True)
             try:
                 headers = next(reader)
             except StopIteration:
@@ -76,6 +82,12 @@ def validate_file(path: Path) -> ValidationResult:
                 if not row:
                     continue  # skip blank line
                 row_count += 1
+                try:
+                    if not re.fullmatch(r'\d{2}:\d{2}:\d{2}', row[1]):
+                        raise ValueError
+                    datetime.strptime(row[1], '%H:%M:%S')
+                except (IndexError, ValueError):
+                    issues.append("invalid_timestamp")
                 # 4. Column count
                 if len(row) != len(EXPECTED_HEADERS):
                     issues.append("missing_columns_in_row")

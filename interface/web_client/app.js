@@ -11,6 +11,7 @@ const SELECTED = new Set();
 // Activity status handling: lightweight UI feedback loop with animated dots
 // and global button disabling while a request is in flight.
 let activityTimer = null;
+let activityHideTimer = null;
 function setBusy(disabled) {
   ['connect-form','bulk-download-btn','check-new-btn','refresh-btn','disconnect-btn','select-all-files-btn','clear-selection-btn'].forEach(id => {
     const el = document.getElementById(id);
@@ -24,6 +25,7 @@ function setBusy(disabled) {
 }
 
 function showActivity(msg, state='info') {
+  clearTimeout(activityHideTimer);
   const bar = document.getElementById('activity-bar');
   const msgSpan = document.getElementById('activity-message');
   const dots = document.getElementById('activity-dots');
@@ -63,8 +65,9 @@ function hideActivity(finalState='success') {
     bar.classList.remove('activity-error','activity-success');
     bar.classList.add('activity-info');
   }
-  setTimeout(() => { if (bar) bar.style.display='none'; }, 800);
+  activityHideTimer = setTimeout(() => { if (bar) bar.style.display='none'; }, 800);
   setBusy(false);
+  setConnected(Boolean(TOKEN), document.getElementById('pwd')?.value || '');
 }
 
 // === Helpers ===
@@ -121,15 +124,22 @@ function renderFileList() {
   const tbody = document.getElementById('files-tbody');
   tbody.innerHTML = '';
   pageFiles.forEach(f => {
-    const checked = SELECTED.has(f.name) ? 'checked' : '';
-    const disabled = f.downloaded ? 'disabled' : '';
     const tr = document.createElement('tr');
     if (!f.matches_pattern) tr.classList.add('invalid-row');
-    tr.innerHTML = `
-      <td><input type="checkbox" class="file-check" data-name="${f.name}" ${checked} ${disabled}></td>
-      <td>${f.name}</td>
-      <td>${f.matches_pattern ? 'Yes' : 'No'}</td>
-      <td>${f.downloaded ? 'Yes' : 'No'}</td>`;
+    const selectCell = document.createElement('td');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'file-check';
+    checkbox.dataset.name = f.name;
+    checkbox.checked = SELECTED.has(f.name);
+    checkbox.disabled = Boolean(f.downloaded);
+    selectCell.appendChild(checkbox);
+    tr.appendChild(selectCell);
+    [f.name, f.matches_pattern ? 'Yes' : 'No', f.downloaded ? 'Yes' : 'No'].forEach(value => {
+      const cell = document.createElement('td');
+      cell.textContent = value;
+      tr.appendChild(cell);
+    });
     tbody.appendChild(tr);
   });
   const master = document.getElementById('master-page-check');
@@ -223,7 +233,7 @@ async function connect(evt) {
     showActivity('Connecting to FTP server');
     const j = await api('/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ host, port, user, password }) });
     TOKEN = j.token;
-    try { await doList(); } catch(_) {}
+    await doList();
     hideActivity('success');
   } catch (err) {
     hideActivity('error');
@@ -244,15 +254,27 @@ async function disconnect() {
 }
 
 // === Event Wiring ===
+async function runAction(action) {
+  let failed = false;
+  try {
+    await action();
+  } catch (err) {
+    failed = true;
+    alert('Operation failed: ' + err.message);
+  } finally {
+    hideActivity(failed ? 'error' : 'success');
+  }
+}
+
 // Hook DOM events after initial load; keeps HTML minimal and logic centralized.
 window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('connect-form').addEventListener('submit', connect);
   document.getElementById('disconnect-btn').addEventListener('click', disconnect);
-  document.getElementById('refresh-btn').addEventListener('click', doList);
+  document.getElementById('refresh-btn').addEventListener('click', () => runAction(doList));
   document.getElementById('bulk-download-btn').addEventListener('click', () => {
-    bulkDownload(Array.from(SELECTED.values()));
+    runAction(() => bulkDownload(Array.from(SELECTED.values())));
   });
-  document.getElementById('check-new-btn').addEventListener('click', checkNewFiles);
+  document.getElementById('check-new-btn').addEventListener('click', () => runAction(checkNewFiles));
   const prev = document.getElementById('prev-page');
   const next = document.getElementById('next-page');
   if (prev) prev.addEventListener('click', () => { if (CURRENT_PAGE>1){CURRENT_PAGE--; renderFileList(); }});
